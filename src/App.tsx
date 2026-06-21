@@ -26,7 +26,8 @@ import {
   Award,
   Zap,
   ShieldCheck,
-  Star
+  Star,
+  Info
 } from "lucide-react";
 import { SubtitleSegment, SubtitleStyle, VideoMetadata, AppStats, UserBillingState, PurchaseTransaction } from "./types";
 import SaaSUpgradeBilling, { PACKAGES } from "./components/SaaSUpgradeBilling";
@@ -198,7 +199,7 @@ export default function App() {
   const [isPaying, setIsPaying] = useState<boolean>(false);
   const [showAdModal, setShowAdModal] = useState<boolean>(false);
   const [adSecondsRemaining, setAdSecondsRemaining] = useState<number>(5);
-  const [pendingDownloadAction, setPendingDownloadAction] = useState<() => void>(() => {});
+  const [pendingActionType, setPendingActionType] = useState<'srt' | 'vtt' | 'export' | null>(null);
 
   // Manual subtitle inline editing values
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -572,59 +573,59 @@ export default function App() {
   };
 
   // Generate File Downloader Helpers
+  const executeDownloadSRT = () => {
+    let srtContent = "";
+    subtitles.forEach((sub, index) => {
+      const formatTime = (time: number) => {
+        const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
+        const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
+        const secs = Math.floor(time % 60).toString().padStart(2, "0");
+        const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
+        return `${hrs}:${mins}:${secs},${ms}`;
+      };
+
+      srtContent += `${index + 1}\n`;
+      srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+      srtContent += `${sub.text}\n\n`;
+    });
+
+    triggerFileDownload(srtContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.srt`, "text/plain");
+  };
+
   const downloadSRT = () => {
-    const action = () => {
-      let srtContent = "";
-      subtitles.forEach((sub, index) => {
-        const formatTime = (time: number) => {
-          const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
-          const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
-          const secs = Math.floor(time % 60).toString().padStart(2, "0");
-          const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
-          return `${hrs}:${mins}:${secs},${ms}`;
-        };
-
-        srtContent += `${index + 1}\n`;
-        srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-        srtContent += `${sub.text}\n\n`;
-      });
-
-      triggerFileDownload(srtContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.srt`, "text/plain");
-    };
-
     if (userBilling.isPremium) {
-      action();
+      executeDownloadSRT();
     } else {
-      setPendingDownloadAction(() => action);
+      setPendingActionType("srt");
       setAdSecondsRemaining(5);
       setShowAdModal(true);
     }
   };
 
+  const executeDownloadVTT = () => {
+    let vttContent = "WEBVTT\n\n";
+    subtitles.forEach((sub, index) => {
+      const formatTime = (time: number) => {
+        const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
+        const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
+        const secs = Math.floor(time % 60).toString().padStart(2, "0");
+        const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
+        return `${hrs}:${mins}:${secs}.${ms}`;
+      };
+
+      vttContent += `${index + 1}\n`;
+      vttContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+      vttContent += `${sub.text}\n\n`;
+    });
+
+    triggerFileDownload(vttContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.vtt`, "text/plain");
+  };
+
   const downloadVTT = () => {
-    const action = () => {
-      let vttContent = "WEBVTT\n\n";
-      subtitles.forEach((sub, index) => {
-        const formatTime = (time: number) => {
-          const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
-          const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
-          const secs = Math.floor(time % 60).toString().padStart(2, "0");
-          const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
-          return `${hrs}:${mins}:${secs}.${ms}`;
-        };
-
-        vttContent += `${index + 1}\n`;
-        vttContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-        vttContent += `${sub.text}\n\n`;
-      });
-
-      triggerFileDownload(vttContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.vtt`, "text/plain");
-    };
-
     if (userBilling.isPremium) {
-      action();
+      executeDownloadVTT();
     } else {
-      setPendingDownloadAction(() => action);
+      setPendingActionType("vtt");
       setAdSecondsRemaining(5);
       setShowAdModal(true);
     }
@@ -643,30 +644,30 @@ export default function App() {
   };
 
   // Export video simulation with burned-in subtitles
-  const runExportVideoSimulation = () => {
-    const action = () => {
-      setIsBurning(true);
-      setBurnProgress(0);
-      
-      const interval = setInterval(() => {
-        setBurnProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
-              setIsBurning(false);
-              alert(`Selesai! Video "${metadata.name}" berhasil di-render dengan subtitle tertanam (${style.fontFamily}, warna ${style.fontColor}, posisi ${style.position}) menggunakan akselerasi GPU neon. Mengunduh hasil konversi.`);
-            }, 600);
-            return 100;
-          }
-          return prev + 5;
-        });
-      }, 150);
-    };
+  const executeExportVideo = () => {
+    setIsBurning(true);
+    setBurnProgress(0);
+    
+    const interval = setInterval(() => {
+      setBurnProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setIsBurning(false);
+            alert(`Selesai! Video "${metadata.name}" berhasil di-render dengan subtitle tertanam (${style.fontFamily}, warna ${style.fontColor}, posisi ${style.position}) menggunakan akselerasi GPU neon. Mengunduh hasil konversi.`);
+          }, 600);
+          return 100;
+        }
+        return prev + 5;
+      });
+    }, 150);
+  };
 
+  const runExportVideoSimulation = () => {
     if (userBilling.isPremium) {
-      action();
+      executeExportVideo();
     } else {
-      setPendingDownloadAction(() => action);
+      setPendingActionType("export");
       setAdSecondsRemaining(5);
       setShowAdModal(true);
     }
@@ -1658,22 +1659,29 @@ export default function App() {
           <div className="cyber-panel w-full max-w-lg bg-slate-950 border border-cyan-500/60 p-6 rounded-3xl relative shadow-[0_0_50px_rgba(6,182,212,0.25)] text-center">
             
             <div className="mb-4">
-              <span className="inline-flex items-center gap-1 bg-cyan-500/10 text-cyan-300 border border-cyan-400/20 px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest animate-pulse">
-                <Tv className="w-3.5 h-3.5 animate-bounce" />
-                Rewarding Sponsor Video Ad System
+              <span className="inline-flex items-center gap-1 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-300 border border-cyan-400/20 px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest animate-pulse">
+                <Tv className="w-3.5 h-3.5 animate-bounce text-cyan-400" />
+                Google Adsense Rewarded Ad Sandbox
               </span>
               <h3 className="text-xl font-extrabold text-white uppercase tracking-tight mt-2 font-display">
                 Mempersiapkan Unduhan Anda
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Tonton iklan video bersponsor 5 detik untuk mengunduh subtitle berakurasi tinggi tanpa Watermark secara gratis.
+                Tonton simulasi unit iklan sponsor Google Ads selama 5 detik untuk mengunduh subtitle premium gratis.
               </p>
             </div>
 
-            {/* Simulated Live Video Player container with high cybernetics */}
-            <div className="w-full aspect-video bg-black/80 rounded-2xl border border-white/5 overflow-hidden relative flex flex-col items-center justify-center p-6 mb-6">
+            {/* Simulated Live Google Ads Video Player / Interstitial unit */}
+            <div className="w-full aspect-video bg-indigo-950/20 rounded-2xl border border-white/5 overflow-hidden relative flex flex-col items-center justify-center p-6 mb-3 group">
+              {/* Official Ad Badge Overlay on Top Right (characteristic Google Adsense banner look) */}
+              <div className="absolute top-3 right-3 bg-white/95 text-slate-900 px-2 py-1 rounded shadow-md text-[8px] flex items-center gap-1 font-sans font-medium uppercase tracking-wider z-20">
+                <span>Iklan oleh Google</span>
+                <span className="w-2.5 h-2.5 bg-sky-500 rounded-full flex items-center justify-center text-white text-[6px]">i</span>
+                <span className="text-slate-400 leading-none hover:text-slate-900 cursor-pointer">✕</span>
+              </div>
+
               {/* Spinning background neon scanline overlay */}
-              <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_95%,rgba(6,182,212,0.15)_95%)] bg-[size:100%_16px] animate-[pulse_1.5s_infinite] pointer-events-none z-0"></div>
+              <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_95%,rgba(6,182,212,0.1)_95%)] bg-[size:100%_16px] animate-[pulse_1.5s_infinite] pointer-events-none z-0"></div>
               
               <div className="z-10 text-center space-y-3">
                 {adSecondsRemaining > 0 ? (
@@ -1681,12 +1689,21 @@ export default function App() {
                     <div className="w-16 h-16 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin mx-auto flex items-center justify-center">
                       <span className="text-md font-black text-cyan-400 font-mono">{adSecondsRemaining}s</span>
                     </div>
-                    <p className="text-xs font-mono text-cyan-300 uppercase tracking-widest animate-pulse">
-                      SPONSOR: CYBERNETIC INTEGRATION SYSTEMS LTD
-                    </p>
-                    <p className="text-[10px] text-slate-400 max-w-sm mx-auto leading-relaxed">
-                      "Menyediakan solusi hosting VPS berkinerja tinggi, database tanpa latensi, dan optimalisasi AI core untuk pengembang global."
-                    </p>
+                    {/* Beautiful representative Ad Content */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-mono text-cyan-300 uppercase tracking-widest animate-pulse">
+                        SPONSOR GOOGLE ADS: GOOGLE CLOUD INDONESIA
+                      </p>
+                      <h4 className="text-sm font-black text-white uppercase tracking-tight">
+                        Akselerasi AI dengan VM GPU NVIDIA H100
+                      </h4>
+                      <p className="text-[10px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                        "Bangun, uji, dan luncurkan aplikasi AI masa depan menggunakan platform cloud berkecepatan tinggi global dengan dukungan local payment."
+                      </p>
+                      <span className="inline-block px-3 py-1 bg-sky-500 text-white font-bold text-[9px] uppercase tracking-wider rounded-md mt-2">
+                        Pelajari Selengkapnya
+                      </span>
+                    </div>
                   </>
                 ) : (
                   <div className="space-y-4 animate-fade-in">
@@ -1698,7 +1715,7 @@ export default function App() {
                         ✓ Iklan Selesai Ditonton!
                       </p>
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Hak istimewa download gratis bebas watermark telah terbuka untuk sesi ini.
+                        Akurasi premium tanpa watermark terbuka untuk di-download.
                       </p>
                     </div>
                   </div>
@@ -1712,6 +1729,32 @@ export default function App() {
                   return <div key={i} className={`flex-1 bg-cyan-400 ${heights[i % heights.length]} rounded-full animate-pulse`}></div>;
                 })}
               </div>
+            </div>
+
+            {/* Developer Integration Code Explainer Info Unit */}
+            <div className="bg-slate-900 border border-white/5 p-3 rounded-xl mb-4 text-left">
+              <div className="flex items-center gap-1.5 text-sky-400 text-[10px] font-bold uppercase tracking-wider font-mono mb-1">
+                <Info className="w-3.5 h-3.5" />
+                Cara Pasang Google AdSense Asli (Produksi)
+              </div>
+              <p className="text-[9px] text-slate-400 leading-relaxed mb-2">
+                Iklan di atas adalah simulasi interface AdSense. Pada situs web produksi asli Anda, muat script global Google Publisher di dalam <code className="text-slate-200 bg-slate-950 px-1 rounded">index.html</code>:
+              </p>
+              <pre className="text-[8px] bg-slate-950 p-2 rounded text-slate-300 font-mono overflow-x-auto whitespace-pre select-all border border-white/5">
+{`<!-- Tempel di dalam <head> / <body> -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+
+<!-- Render Unit Iklan Interstitial/Rewarded -->
+<ins class="adsbygoogle"
+     style="display:block; text-align:center;"
+     data-ad-layout="in-article"
+     data-ad-format="fluid"
+     data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
+     data-ad-slot="YYYYYYYYYY"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>`}
+              </pre>
             </div>
 
             {/* Option to bypass ad permanently */}
@@ -1745,9 +1788,14 @@ export default function App() {
               <button
                 onClick={() => {
                   setShowAdModal(false);
-                  if (pendingDownloadAction) {
-                    pendingDownloadAction();
+                  if (pendingActionType === "srt") {
+                    executeDownloadSRT();
+                  } else if (pendingActionType === "vtt") {
+                    executeDownloadVTT();
+                  } else if (pendingActionType === "export") {
+                    executeExportVideo();
                   }
+                  setPendingActionType(null);
                 }}
                 disabled={adSecondsRemaining > 0}
                 className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
