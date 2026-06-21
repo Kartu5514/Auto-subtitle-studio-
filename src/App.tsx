@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { SubtitleSegment, SubtitleStyle, VideoMetadata, AppStats, UserBillingState, PurchaseTransaction } from "./types";
 import SaaSUpgradeBilling, { PACKAGES } from "./components/SaaSUpgradeBilling";
+const subzyLogo = "/src/assets/images/subzy_logo_1782059780662.jpg";
 
 // Standard placeholder video if user doesn't have an MP4 readily available
 const DEMO_VIDEO_URL = "https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-street-strolls-with-pink-neon-signage-39832-large.mp4";
@@ -156,7 +157,7 @@ export default function App() {
   
   // Subtitle States
   const [subtitles, setSubtitles] = useState<SubtitleSegment[]>([
-    { id: "1", start: 0.5, end: 4.0, text: "Halo semuanya! Selamat datang di Auto Subtitle Studio v1." },
+    { id: "1", start: 0.5, end: 4.0, text: "Halo semuanya! Selamat datang di Subzy v1." },
     { id: "2", start: 4.2, end: 8.5, text: "Sistem cerdas kami akan secara otomatis mengubah suara video Anda menjadi teks." },
     { id: "3", start: 9.0, end: 14.5, text: "Tinggal edit secara real-time, ubah estetikanya, dan unduh format SRT instan!" }
   ]);
@@ -695,13 +696,18 @@ export default function App() {
       {/* Top Header Bar */}
       <header className="relative flex items-center justify-between px-4 sm:px-8 py-4 border-b border-white/5 bg-black/40 backdrop-blur-md z-10 shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.5)] animate-pulse">
-            <Cpu className="w-6 h-6 text-white" />
+          <div className="w-12 h-12 bg-slate-900 border border-cyan-500/30 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+            <img 
+              src={subzyLogo} 
+              alt="Subzy Logo" 
+              className="w-full h-full object-cover" 
+              referrerPolicy="no-referrer" 
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 uppercase">
-                Auto Subtitle Studio
+                Subzy
               </h1>
               <span className="text-[9px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono border border-cyan-400/40 uppercase tracking-widest hidden sm:inline-block">
                 Beta v1.0
@@ -994,7 +1000,7 @@ export default function App() {
                     url: DEMO_VIDEO_URL
                   });
                   setSubtitles([
-                    { id: "1", start: 0.5, end: 4.0, text: "Halo semuanya! Selamat datang di Auto Subtitle Studio v1." },
+                    { id: "1", start: 0.5, end: 4.0, text: "Halo semuanya! Selamat datang di Subzy v1." },
                     { id: "2", start: 4.2, end: 8.5, text: "Sistem cerdas kami akan secara otomatis mengubah suara video Anda menjadi teks." },
                     { id: "3", start: 9.0, end: 14.5, text: "Tinggal edit secara real-time, ubah estetikanya, dan unduh format SRT instan!" }
                   ]);
@@ -1467,7 +1473,7 @@ export default function App() {
         <div className="cyber-panel p-6 rounded-2xl bg-white/5 border border-white/10">
           <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300 font-mono mb-4 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-yellow-400" />
-            Auto Subtitle Studio - Platform Roadmap & Features (v2 - v5)
+            Subzy - Platform Roadmap & Features (v2 - v5)
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-black/40 border border-white/5 rounded-xl p-4">
