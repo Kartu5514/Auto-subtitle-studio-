@@ -1,0 +1,6 @@
+{
+  "name": "Auto Subtitle Studio",
+  "description": "Generate, edit, and export automatic video subtitles using advanced AI in a cyberpunk neon dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
