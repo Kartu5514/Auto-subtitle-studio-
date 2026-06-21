@@ -31,3 +31,21 @@ export interface AppStats {
   totalSubtitles: number;
   totalDuration: number;
 }
+
+export interface PurchaseTransaction {
+  id: string;
+  packageId: string;
+  packageName: string;
+  price: number;
+  creditsGranted: number;
+  bonusGranted: number;
+  timestamp: string;
+}
+
+export interface UserBillingState {
+  credits: number;
+  isPremium: boolean;
+  claimedBonusPackages: string[];
+  purchaseHistory: PurchaseTransaction[];
+  lastDailyClaimedDateString: string | null;
+}

@@ -18,9 +18,18 @@ import {
   Sparkles,
   Layers,
   Database,
-  Globe
+  Globe,
+  CreditCard,
+  Coins,
+  History,
+  Tv,
+  Award,
+  Zap,
+  ShieldCheck,
+  Star
 } from "lucide-react";
-import { SubtitleSegment, SubtitleStyle, VideoMetadata, AppStats } from "./types";
+import { SubtitleSegment, SubtitleStyle, VideoMetadata, AppStats, UserBillingState, PurchaseTransaction } from "./types";
+import SaaSUpgradeBilling, { PACKAGES } from "./components/SaaSUpgradeBilling";
 
 // Standard placeholder video if user doesn't have an MP4 readily available
 const DEMO_VIDEO_URL = "https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-street-strolls-with-pink-neon-signage-39832-large.mp4";
@@ -175,6 +184,22 @@ export default function App() {
     totalDuration: 320
   });
 
+  // SaaS Billing state & defaults
+  const [activeTab, setActiveTab] = useState<'workspace' | 'billing'>('workspace');
+  const [userBilling, setUserBilling] = useState<UserBillingState>({
+    credits: 1, // Start with 1 credits
+    isPremium: false,
+    claimedBonusPackages: [],
+    purchaseHistory: [],
+    lastDailyClaimedDateString: null
+  });
+  const [checkoutPackage, setCheckoutPackage] = useState<any>(null);
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<string>("QRIS");
+  const [isPaying, setIsPaying] = useState<boolean>(false);
+  const [showAdModal, setShowAdModal] = useState<boolean>(false);
+  const [adSecondsRemaining, setAdSecondsRemaining] = useState<number>(5);
+  const [pendingDownloadAction, setPendingDownloadAction] = useState<() => void>(() => {});
+
   // Manual subtitle inline editing values
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -207,7 +232,7 @@ export default function App() {
     return () => observer.disconnect();
   }, [metadata.url]);
 
-  // Load persistence stats on init
+  // Load persistence stats and billing on init
   useEffect(() => {
     const savedStats = localStorage.getItem("auto_subtitle_stats");
     if (savedStats) {
@@ -217,7 +242,83 @@ export default function App() {
         // use default
       }
     }
+
+    const savedBilling = localStorage.getItem("auto_subtitle_billing");
+    if (savedBilling) {
+      try {
+        setUserBilling(JSON.parse(savedBilling));
+      } catch (e) {
+        // use default
+      }
+    }
   }, []);
+
+  const saveBilling = (newBilling: UserBillingState) => {
+    setUserBilling(newBilling);
+    localStorage.setItem("auto_subtitle_billing", JSON.stringify(newBilling));
+  };
+
+  const handleClaimDailyCredit = () => {
+    const todayStr = new Date().toLocaleDateString("id-ID");
+    if (userBilling.lastDailyClaimedDateString === todayStr) {
+      alert("Maksimal 1 Klaim Harian! Anda sudah mengklaim kredit gratis untuk hari ini. Silakan kembali besok.");
+      return;
+    }
+    const updatedBilling: UserBillingState = {
+      ...userBilling,
+      credits: userBilling.credits + 1,
+      lastDailyClaimedDateString: todayStr
+    };
+    saveBilling(updatedBilling);
+    alert("Berhasil! +1 Kredit gratis harian telah ditambahkan ke saldo akun Anda.");
+  };
+
+  const handlePurchasePackage = (pkg: any) => {
+    setCheckoutPackage(pkg);
+    setCheckoutPaymentMethod("QRIS");
+  };
+
+  const executeCheckout = () => {
+    if (!checkoutPackage) return;
+    setIsPaying(true);
+
+    // Simulate 1.5 seconds encrypted sandbox transaction response
+    setTimeout(() => {
+      const hasClaimedThisBonus = userBilling.claimedBonusPackages.includes(checkoutPackage.id);
+      const isFirstOfThisPackage = !hasClaimedThisBonus;
+      const baseCredits = checkoutPackage.credits;
+      const bonusCredits = isFirstOfThisPackage ? checkoutPackage.bonus : 0;
+      const totalGranted = baseCredits + bonusCredits;
+
+      const newHistoryItem: PurchaseTransaction = {
+        id: "TX_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        packageId: checkoutPackage.id,
+        packageName: checkoutPackage.name,
+        price: checkoutPackage.price,
+        creditsGranted: baseCredits,
+        bonusGranted: bonusCredits,
+        timestamp: new Date().toISOString()
+      };
+
+      const updatedClaimedBonus = [...userBilling.claimedBonusPackages];
+      if (isFirstOfThisPackage) {
+        updatedClaimedBonus.push(checkoutPackage.id);
+      }
+
+      const updatedBilling: UserBillingState = {
+        ...userBilling,
+        credits: userBilling.credits + totalGranted,
+        isPremium: true, // Activated automatically for permanent use after purchase
+        claimedBonusPackages: updatedClaimedBonus,
+        purchaseHistory: [newHistoryItem, ...userBilling.purchaseHistory]
+      };
+
+      saveBilling(updatedBilling);
+      setIsPaying(false);
+      setCheckoutPackage(null);
+      alert(`Pembayaran Berhasil! Terimakasih telah membeli ${checkoutPackage.name}. Saldo Anda terisi +${totalGranted} Kredit ${isFirstOfThisPackage ? `(termasuk bonus pembelian pertama +${checkoutPackage.bonus} Kredit)` : ""}. Status Premium Aktif Permanen!`);
+    }, 1500);
+  };
 
   // Update active subtitle based on video current time
   useEffect(() => {
@@ -228,6 +329,18 @@ export default function App() {
       setActiveSubId(null);
     }
   }, [currentTime, subtitles]);
+
+  // Handle ad countdown progression
+  useEffect(() => {
+    if (!showAdModal) return;
+    if (adSecondsRemaining <= 0) return;
+
+    const timer = setTimeout(() => {
+      setAdSecondsRemaining(prev => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [showAdModal, adSecondsRemaining]);
 
   const saveStats = (newStats: AppStats) => {
     setStats(newStats);
@@ -312,13 +425,29 @@ export default function App() {
 
   // AI Subtitle Generator Flow
   const triggerAISubtitleGeneration = async () => {
+    // Credit requirement check
+    if (userBilling.credits < 1) {
+      alert("Kredit Anda tidak mencukupi (0 kredit). Silakan klaim kredit gratis harian atau beli paket kredit premium.");
+      setActiveTab("billing");
+      return;
+    }
+
     setIsGenerating(true);
     let audioBase64: string | null = null;
     
     try {
+      // Safely deduct 1 credit from user account
+      const updatedBilling = {
+        ...userBilling,
+        credits: userBilling.credits - 1
+      };
+      saveBilling(updatedBilling);
+
       // Step 0: Upload / analyze layout (visual cue)
       setGenerationStep(0);
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      // Premium Users get VIP priority processing queue (2.5x times faster delay simulation!)
+      const uploadDelay = userBilling.isPremium ? 450 : 1200;
+      await new Promise(resolve => setTimeout(resolve, uploadDelay));
 
       // Step 1: Extract Audio (Actual browser-side offline decoding)
       setGenerationStep(1);
@@ -331,7 +460,8 @@ export default function App() {
         }
       } else {
         // No uploaded video file (using default demo video), wait to show step
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        const audioDelay = userBilling.isPremium ? 550 : 1500;
+        await new Promise(resolve => setTimeout(resolve, audioDelay));
       }
 
       // Step 2: Menghasilkan transkrip (Calling actual backend STT API)
@@ -355,7 +485,7 @@ export default function App() {
       
       // Step 3: Menyinkronkan timestamp (visual finalization cue)
       setGenerationStep(3);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, userBilling.isPremium ? 300 : 1000));
 
       if (data.success && Array.isArray(data.subtitles)) {
         setSubtitles(data.subtitles);
@@ -443,41 +573,61 @@ export default function App() {
 
   // Generate File Downloader Helpers
   const downloadSRT = () => {
-    let srtContent = "";
-    subtitles.forEach((sub, index) => {
-      const formatTime = (time: number) => {
-        const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
-        const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
-        const secs = Math.floor(time % 60).toString().padStart(2, "0");
-        const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
-        return `${hrs}:${mins}:${secs},${ms}`;
-      };
+    const action = () => {
+      let srtContent = "";
+      subtitles.forEach((sub, index) => {
+        const formatTime = (time: number) => {
+          const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
+          const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
+          const secs = Math.floor(time % 60).toString().padStart(2, "0");
+          const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
+          return `${hrs}:${mins}:${secs},${ms}`;
+        };
 
-      srtContent += `${index + 1}\n`;
-      srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-      srtContent += `${sub.text}\n\n`;
-    });
+        srtContent += `${index + 1}\n`;
+        srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+        srtContent += `${sub.text}\n\n`;
+      });
 
-    triggerFileDownload(srtContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.srt`, "text/plain");
+      triggerFileDownload(srtContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.srt`, "text/plain");
+    };
+
+    if (userBilling.isPremium) {
+      action();
+    } else {
+      setPendingDownloadAction(() => action);
+      setAdSecondsRemaining(5);
+      setShowAdModal(true);
+    }
   };
 
   const downloadVTT = () => {
-    let vttContent = "WEBVTT\n\n";
-    subtitles.forEach((sub, index) => {
-      const formatTime = (time: number) => {
-        const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
-        const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
-        const secs = Math.floor(time % 60).toString().padStart(2, "0");
-        const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
-        return `${hrs}:${mins}:${secs}.${ms}`;
-      };
+    const action = () => {
+      let vttContent = "WEBVTT\n\n";
+      subtitles.forEach((sub, index) => {
+        const formatTime = (time: number) => {
+          const hrs = Math.floor(time / 3600).toString().padStart(2, "0");
+          const mins = Math.floor((time % 3600) / 60).toString().padStart(2, "0");
+          const secs = Math.floor(time % 60).toString().padStart(2, "0");
+          const ms = Math.floor((time % 1) * 1000).toString().padStart(3, "0");
+          return `${hrs}:${mins}:${secs}.${ms}`;
+        };
 
-      vttContent += `${index + 1}\n`;
-      vttContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-      vttContent += `${sub.text}\n\n`;
-    });
+        vttContent += `${index + 1}\n`;
+        vttContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+        vttContent += `${sub.text}\n\n`;
+      });
 
-    triggerFileDownload(vttContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.vtt`, "text/plain");
+      triggerFileDownload(vttContent, `${metadata.name.replace(/\.[^/.]+$/, "")}.vtt`, "text/plain");
+    };
+
+    if (userBilling.isPremium) {
+      action();
+    } else {
+      setPendingDownloadAction(() => action);
+      setAdSecondsRemaining(5);
+      setShowAdModal(true);
+    }
   };
 
   const triggerFileDownload = (content: string, filename: string, contentType: string) => {
@@ -494,22 +644,32 @@ export default function App() {
 
   // Export video simulation with burned-in subtitles
   const runExportVideoSimulation = () => {
-    setIsBurning(true);
-    setBurnProgress(0);
-    
-    const interval = setInterval(() => {
-      setBurnProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setIsBurning(false);
-            alert(`Selesai! Video "${metadata.name}" berhasil di-render dengan subtitle tertanam (${style.fontFamily}, warna ${style.fontColor}, posisi ${style.position}) menggunakan akselerasi GPU neon. Mengunduh hasil konversi.`);
-          }, 600);
-          return 100;
-        }
-        return prev + 5;
-      });
-    }, 150);
+    const action = () => {
+      setIsBurning(true);
+      setBurnProgress(0);
+      
+      const interval = setInterval(() => {
+        setBurnProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setTimeout(() => {
+              setIsBurning(false);
+              alert(`Selesai! Video "${metadata.name}" berhasil di-render dengan subtitle tertanam (${style.fontFamily}, warna ${style.fontColor}, posisi ${style.position}) menggunakan akselerasi GPU neon. Mengunduh hasil konversi.`);
+            }, 600);
+            return 100;
+          }
+          return prev + 5;
+        });
+      }, 150);
+    };
+
+    if (userBilling.isPremium) {
+      action();
+    } else {
+      setPendingDownloadAction(() => action);
+      setAdSecondsRemaining(5);
+      setShowAdModal(true);
+    }
   };
 
   // Convert bytes size to human format
@@ -582,8 +742,66 @@ export default function App() {
         </p>
       </section>
 
-      {/* Main Grid Workspace */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 px-4 sm:px-8 pb-12 z-10 w-full max-w-7xl mx-auto">
+      {/* Cyber Tab Bar Selection */}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-8 mb-6 z-10 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex gap-2 bg-slate-950/80 p-1.5 rounded-xl border border-white/5">
+          <button
+            onClick={() => setActiveTab('workspace')}
+            className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+              activeTab === 'workspace'
+                ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Film className="w-4 h-4" />
+            Workspace Editor
+          </button>
+          <button
+            onClick={() => setActiveTab('billing')}
+            className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+              activeTab === 'billing'
+                ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Pricing &amp; SaaS Premium
+          </button>
+        </div>
+
+        {/* Live header credit bar */}
+        <div className="flex items-center gap-3">
+          <div className="p-2 sm:px-4 sm:py-2 bg-slate-950/90 border border-white/5 rounded-xl flex items-center gap-3">
+            <Coins className="w-4 h-4 text-cyan-400 text-glow" />
+            <div className="text-left leading-none">
+              <span className="text-[9px] text-slate-400 block uppercase font-mono tracking-widest leading-none">Your Balance</span>
+              <strong className="text-xs sm:text-sm font-black text-white font-mono">{userBilling.credits} Kredit</strong>
+            </div>
+          </div>
+          
+          <div className="p-2 sm:px-4 sm:py-2 bg-slate-950/90 border border-white/5 rounded-xl flex items-center gap-2">
+            <ShieldCheck className={`w-4 h-4 ${userBilling.isPremium ? 'text-purple-400' : 'text-slate-500'}`} />
+            <div className="text-left leading-none">
+              <span className="text-[9px] text-slate-400 block uppercase font-mono tracking-widest leading-none">Membership</span>
+              <strong className={`text-[11px] font-black uppercase tracking-wide ${userBilling.isPremium ? 'text-purple-400' : 'text-slate-400'}`}>
+                {userBilling.isPremium ? 'Premium VIP' : 'Free Tier'}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {activeTab === 'billing' ? (
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-8 pb-12 z-10 shadow-xl" id="billing-view-section">
+          <SaaSUpgradeBilling 
+            userBilling={userBilling} 
+            onClaimDaily={handleClaimDailyCredit} 
+            onPurchasePackage={handlePurchasePackage} 
+          />
+        </main>
+      ) : (
+        /* Main Grid Workspace */
+        <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 px-4 sm:px-8 pb-12 z-10 w-full max-w-7xl mx-auto">
         
         {/* LEFT COLUMN: Upload Area, Video Preview & Subtitle Preview styling Overlay (Grid Column Spanning 7) */}
         <div className="lg:col-span-7 flex flex-col gap-6">
@@ -1241,6 +1459,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      )}
 
       {/* Roadmap & Future Capabilities Feature Badge Carousel */}
       <section className="px-4 sm:px-8 max-w-7xl mx-auto w-full pb-12 z-10">
@@ -1285,6 +1504,271 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      {/* MODAL 1: CYBER SECURE BILLING CHECKOUT GATEWAY SANDBOX */}
+      {checkoutPackage && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="cyber-panel w-full max-w-md bg-slate-950 border border-purple-500/50 p-6 rounded-2xl relative shadow-[0_0_50px_rgba(168,85,247,0.25)]">
+            <button 
+              onClick={() => { if (!isPaying) setCheckoutPackage(null); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-mono tracking-widest uppercase cursor-pointer"
+              disabled={isPaying}
+            >
+              [X] Batalkan
+            </button>
+
+            <div className="mb-4">
+              <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-mono uppercase tracking-widest font-black">
+                Secure Sandbox Checkout v1.0
+              </span>
+              <h3 className="text-xl font-extrabold text-white uppercase tracking-tight mt-1">
+                Ulasan Pembelian
+              </h3>
+            </div>
+
+            <div className="bg-slate-900/60 border border-white/5 p-4 rounded-xl space-y-2 mb-5">
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>Skema Paket:</span>
+                <span className="font-bold text-slate-200">{checkoutPackage.name}</span>
+              </div>
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>Nilai Isi Utama:</span>
+                <span className="font-bold font-mono text-cyan-400">+{checkoutPackage.credits} Kredit</span>
+              </div>
+              
+              {!userBilling.claimedBonusPackages.includes(checkoutPackage.id) && (
+                <div className="flex justify-between text-xs text-purple-400 font-bold">
+                  <span>Bonus Klaim Pertama:</span>
+                  <span className="font-mono bg-purple-500/10 px-1.5 py-0.5 rounded text-[10px]/none">+{checkoutPackage.bonus} Kredit bonus</span>
+                </div>
+              )}
+              
+              <div className="border-t border-white/5 pt-2 flex justify-between text-sm">
+                <span className="font-bold text-slate-300">Total Harga (Nett):</span>
+                <span className="font-mono font-black text-white text-md">
+                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(checkoutPackage.price)}
+                </span>
+              </div>
+            </div>
+
+            {/* Simulated Payment Methods Selector */}
+            <div className="space-y-3 mb-6">
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest font-bold">
+                Pilih Kanal Pembayaran Simulasi:
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "QRIS", label: "QRIS / OVO / Dana / GoPay" },
+                  { id: "VA", label: "Virtual Account" },
+                  { id: "CARD", label: "Sim. Debit Card" }
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { if (!isPaying) setCheckoutPaymentMethod(m.id); }}
+                    className={`p-2.5 rounded-lg border text-center transition-all ${
+                      checkoutPaymentMethod === m.id
+                        ? "bg-purple-500/20 border-purple-400 text-purple-200"
+                        : "bg-black/40 border-white/5 text-slate-400 hover:text-slate-200"
+                    }`}
+                    disabled={isPaying}
+                  >
+                    <p className="text-[11px] font-black font-mono">{m.id}</p>
+                    <p className="text-[8px] text-slate-500 mt-0.5 leading-tight">{m.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Interactive method configuration widget */}
+            <div className="bg-black/50 border border-white/5 p-4 rounded-xl mb-6 flex flex-col items-center justify-center min-h-[140px] text-center">
+              {checkoutPaymentMethod === "QRIS" && (
+                <div className="space-y-2 animate-feed-in">
+                  <div className="w-[100px] h-[100px] bg-white p-2 rounded-lg mx-auto flex items-center justify-center border-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+                    {/* Simulated digital matrix block */}
+                    <div className="grid grid-cols-4 gap-1 w-full h-full bg-slate-900 p-1 rounded-sm">
+                      <div className="bg-white rounded-xs"></div><div className="bg-transparent"></div><div className="bg-white rounded-xs"></div><div className="bg-white rounded-xs"></div>
+                      <div className="bg-white rounded-xs"></div><div className="bg-white rounded-xs"></div><div className="bg-transparent"></div><div className="bg-transparent"></div>
+                      <div className="bg-transparent"></div><div className="bg-white rounded-xs"></div><div className="bg-white rounded-xs"></div><div className="bg-white rounded-xs"></div>
+                      <div className="bg-white rounded-xs"></div><div className="bg-transparent"></div><div className="bg-white rounded-xs"></div><div className="bg-white rounded-xs"></div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-300 font-bold uppercase tracking-wider font-mono">INTEGRASI QRIS DIGITAL LIVE</p>
+                  <p className="text-[9px] text-slate-500">Scan QR di atas untuk menyelesaikan pembelian simulasi secara otomatis.</p>
+                </div>
+              )}
+
+              {checkoutPaymentMethod === "VA" && (
+                <div className="space-y-1 w-full animate-feed-in">
+                  <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Nomor Rekening Virtual Account</p>
+                  <div className="bg-slate-900 p-2 rounded border border-white/5 flex justify-between items-center px-4 font-mono">
+                    <span className="text-sm font-black text-yellow-400 tracking-wider">88904 0812 7748 1192</span>
+                    <button 
+                      onClick={() => alert("Nomor VA berhasil disalin!")} 
+                      className="text-[9px] text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      Salin
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-2">Dukung bank transfer otomatis: Mandiri, BCA, BRI, CIMB, atau BNI.</p>
+                </div>
+              )}
+
+              {checkoutPaymentMethod === "CARD" && (
+                <div className="space-y-2 w-full animate-feed-in">
+                  <div className="bg-gradient-to-r from-slate-900 to-slate-950 p-3 rounded-lg border border-white/10 text-left space-y-2 relative">
+                    <p className="text-[9px] font-mono text-purple-400 uppercase tracking-widest">CYBERNETIC PREPAID CARD</p>
+                    <p className="font-mono text-md font-black text-white text-center py-1 tracking-widest">4412 • 9801 • 5304 • 7824</p>
+                    <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono">
+                      <span>EXP: 12/29</span>
+                      <span>CVV: 504</span>
+                    </div>
+                  </div>
+                  <p className="text-[8px] text-slate-500 leading-tight">Gunakan kartu kredit/debit virtual untuk checkout instan.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Call to action payment launch */}
+            <button
+              onClick={executeCheckout}
+              disabled={isPaying}
+              className={`w-full py-3 px-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-black rounded-lg text-xs uppercase tracking-widest hover:shadow-[0_0_20px_rgba(236,72,153,0.4)] transition-all flex items-center justify-center gap-2 ${
+                isPaying ? "cursor-wait" : ""
+              }`}
+            >
+              {isPaying ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  Mengontak Bank Partner &amp; Memproses...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  SELESAIKAN PEMBAYARAN SIMULASI
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: INTERACTIVE REWARDED VIDEO AD WATCHER FOR FREE USERS */}
+      {showAdModal && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-lg flex items-center justify-center p-4 z-50">
+          <div className="cyber-panel w-full max-w-lg bg-slate-950 border border-cyan-500/60 p-6 rounded-3xl relative shadow-[0_0_50px_rgba(6,182,212,0.25)] text-center">
+            
+            <div className="mb-4">
+              <span className="inline-flex items-center gap-1 bg-cyan-500/10 text-cyan-300 border border-cyan-400/20 px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest animate-pulse">
+                <Tv className="w-3.5 h-3.5 animate-bounce" />
+                Rewarding Sponsor Video Ad System
+              </span>
+              <h3 className="text-xl font-extrabold text-white uppercase tracking-tight mt-2 font-display">
+                Mempersiapkan Unduhan Anda
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Tonton iklan video bersponsor 5 detik untuk mengunduh subtitle berakurasi tinggi tanpa Watermark secara gratis.
+              </p>
+            </div>
+
+            {/* Simulated Live Video Player container with high cybernetics */}
+            <div className="w-full aspect-video bg-black/80 rounded-2xl border border-white/5 overflow-hidden relative flex flex-col items-center justify-center p-6 mb-6">
+              {/* Spinning background neon scanline overlay */}
+              <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_95%,rgba(6,182,212,0.15)_95%)] bg-[size:100%_16px] animate-[pulse_1.5s_infinite] pointer-events-none z-0"></div>
+              
+              <div className="z-10 text-center space-y-3">
+                {adSecondsRemaining > 0 ? (
+                  <>
+                    <div className="w-16 h-16 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin mx-auto flex items-center justify-center">
+                      <span className="text-md font-black text-cyan-400 font-mono">{adSecondsRemaining}s</span>
+                    </div>
+                    <p className="text-xs font-mono text-cyan-300 uppercase tracking-widest animate-pulse">
+                      SPONSOR: CYBERNETIC INTEGRATION SYSTEMS LTD
+                    </p>
+                    <p className="text-[10px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      "Menyediakan solusi hosting VPS berkinerja tinggi, database tanpa latensi, dan optimalisasi AI core untuk pengembang global."
+                    </p>
+                  </>
+                ) : (
+                  <div className="space-y-4 animate-fade-in">
+                    <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-400 rounded-full mx-auto flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]">
+                      <Check className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-mono text-emerald-400 font-black uppercase tracking-wider">
+                        ✓ Iklan Selesai Ditonton!
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Hak istimewa download gratis bebas watermark telah terbuka untuk sesi ini.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Simulated visual audio waveforms bars */}
+              <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end h-8 gap-0.5 opacity-35">
+                {Array.from({ length: 48 }).map((_, i) => {
+                  const heights = ["h-3", "h-5", "h-7", "h-4", "h-2", "h-6", "h-8", "h-1"];
+                  return <div key={i} className={`flex-1 bg-cyan-400 ${heights[i % heights.length]} rounded-full animate-pulse`}></div>;
+                })}
+              </div>
+            </div>
+
+            {/* Option to bypass ad permanently */}
+            <div className="bg-purple-950/20 border border-purple-500/25 p-4 rounded-2xl mb-6 flex flex-col sm:flex-row items-center justify-between text-left gap-4">
+              <div>
+                <p className="text-xs font-bold text-purple-300 uppercase font-mono tracking-widest">Capek Menonton Iklan?</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Dapatkan download instan selamanya, prioritas rendering, dan hapus iklan permanen.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAdModal(false);
+                  setActiveTab("billing");
+                }}
+                className="py-1.5 px-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-[0_0_15px_rgba(168,85,247,0.4)] rounded-lg text-[10px] font-mono uppercase tracking-wider font-extrabold flex-shrink-0 cursor-pointer"
+              >
+                Upgrade Premium Permanent
+              </button>
+            </div>
+
+            {/* Close / Download action trigger */}
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setShowAdModal(false);
+                }}
+                className="flex-1 py-3 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-900/65 cursor-pointer"
+              >
+                Tutup Batalkan
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowAdModal(false);
+                  if (pendingDownloadAction) {
+                    pendingDownloadAction();
+                  }
+                }}
+                disabled={adSecondsRemaining > 0}
+                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                  adSecondsRemaining > 0
+                    ? "bg-slate-800 text-slate-500 border border-slate-700/30 cursor-not-allowed"
+                    : "bg-gradient-to-r from-emerald-500 to-green-500 text-slate-950 font-black hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] cursor-pointer"
+                }`}
+              >
+                {adSecondsRemaining > 0 ? (
+                  `Tonton ${adSecondsRemaining}s Lagi...`
+                ) : (
+                  <>
+                    ✓ UNDUH HASIL SEKARANG
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Cyberpunk Status Footer Bar */}
       <footer className="mt-auto px-4 sm:px-8 py-4 bg-black/80 border-t border-white/5 flex flex-col md:flex-row items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-widest gap-2 z-10">
