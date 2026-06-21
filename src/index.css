@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@700&family=Montserrat:wght@400;500;600;700;800&family=Orbitron:wght@500;700;900&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -143,3 +143,41 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 240, 255, 0.6);
 }
+
+/* Custom Subtitle Template Animations */
+@keyframes subtitle-pop {
+  0% { transform: scale(0.92); opacity: 0.85; }
+  100% { transform: scale(1.02); opacity: 1; }
+}
+
+@keyframes subtitle-slide-up {
+  0% { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes subtitle-zoom-in {
+  0% { transform: scale(0.95); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes word-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-subtitle-pop {
+  animation: subtitle-pop 0.15s ease-out forwards;
+}
+
+.animate-subtitle-slide-up {
+  animation: subtitle-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-subtitle-zoom-in {
+  animation: subtitle-zoom-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-word-bounce {
+  animation: word-bounce 0.4s ease-in-out infinite;
+}
+

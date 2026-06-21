@@ -27,10 +27,13 @@ import {
   Zap,
   ShieldCheck,
   Star,
-  Info
+  Info,
+  Crown,
+  Lock
 } from "lucide-react";
 import { SubtitleSegment, SubtitleStyle, VideoMetadata, AppStats, UserBillingState, PurchaseTransaction } from "./types";
 import SaaSUpgradeBilling, { PACKAGES } from "./components/SaaSUpgradeBilling";
+import { SUBTITLE_TEMPLATES } from "./templatesData";
 const subzyLogo = "/src/assets/images/subzy_logo_1782059780662.jpg";
 
 // Standard placeholder video if user doesn't have an MP4 readily available
@@ -165,6 +168,7 @@ export default function App() {
   const [activeSubId, setActiveSubId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [style, setStyle] = useState<SubtitleStyle>(INITIAL_STYLE);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("classic");
 
   // Workflow pipeline progress states
   const [isGenerating, setIsGenerating] = useState(false);
@@ -573,6 +577,22 @@ export default function App() {
     }
   };
 
+  const handleSelectTemplate = (tpl: typeof SUBTITLE_TEMPLATES[0]) => {
+    if (tpl.isPremium && !userBilling.isPremium) {
+      alert(`🔑 Premium Template: "${tpl.name}" adalah fitur premium! Silakan upgrade akun Anda pada tab Billing untuk membukanya.`);
+      setActiveTab('billing');
+      return;
+    }
+    setSelectedTemplateId(tpl.id);
+    setStyle(prev => ({
+      ...prev,
+      fontFamily: tpl.fontFamily as any,
+      fontSize: tpl.fontSize,
+      position: tpl.position,
+      outline: !!tpl.outline
+    }));
+  };
+
   // Generate File Downloader Helpers
   const executeDownloadSRT = () => {
     let srtContent = "";
@@ -911,22 +931,27 @@ export default function App() {
                     const activeSub = subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
                     if (!activeSub) return null;
 
-                    // Compute dynamic style rules
-                    const fontClass = 
-                      style.fontFamily === "Arial" ? "font-sans" :
-                      style.fontFamily === "Roboto" ? "font-mono" :
-                      style.fontFamily === "Montserrat" ? "font-cyber" : "font-display";
+                    // Compute dynamic font family inline styles to support Orbitron, Cinzel, Bebas Neue
+                    const getFontFamilyStyle = () => {
+                      const fam = style.fontFamily;
+                      if (fam === "Poppins") return { fontFamily: "'Poppins', sans-serif" };
+                      if (fam === "Arial") return { fontFamily: "Arial, sans-serif" };
+                      if (fam === "Roboto") return { fontFamily: "'Roboto', sans-serif" };
+                      if (fam === "Montserrat") return { fontFamily: "'Montserrat', sans-serif" };
+                      if (fam === "Orbitron") return { fontFamily: "'Orbitron', sans-serif" };
+                      if (fam === "Cinzel") return { fontFamily: "'Cinzel', serif" };
+                      if (fam === "Bebas Neue") return { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.08em" };
+                      return { fontFamily: "'Poppins', sans-serif" };
+                    };
 
                     let calculatedFontSizeObj = {};
                     let sizeClass = "";
                     if (style.fontSize === "auto") {
                       const textLen = activeSub.text.length;
-                      // Base scaling coefficient depending on character content density
                       let scaleFactor = 0.034;
                       if (textLen > 65) scaleFactor = 0.024;
                       else if (textLen > 35) scaleFactor = 0.028;
                       
-                      // Calculate pixel size relative to physical container rendering boundary
                       const calculatedPx = Math.max(12, Math.min(22, Math.round(playerWidth * scaleFactor)));
                       calculatedFontSizeObj = { fontSize: `${calculatedPx}px` };
                       sizeClass = "px-3.5 py-1.5 font-medium leading-normal";
@@ -937,21 +962,135 @@ export default function App() {
                         "text-base sm:text-2xl px-6 py-2 pb-2.5 font-bold tracking-tight";
                     }
 
-                    const colorClass = 
-                      style.fontColor === "white" ? "text-white" :
-                      style.fontColor === "yellow" ? "text-[#fefe00] cyber-glow-yellow" :
-                      style.fontColor === "green" ? "text-green-400" : "text-cyan-400 cyber-glow-cyan";
+                    // Combined custom styles
+                    let customStyle: React.CSSProperties = {
+                      ...getFontFamilyStyle(),
+                      ...calculatedFontSizeObj
+                    };
 
-                    const outlineStyle = style.outline 
-                      ? "bg-black/85 border border-white/10 shadow-[0_0_15px_rgba(0,0,0,0.8)] rounded-xl" 
-                      : "bg-transparent text-shadow-md";
+                    let customClass = "";
+                    let animationClass = "";
+
+                    // Template-specific style & animation classes overrides
+                    if (selectedTemplateId === "tiktok_viral") {
+                      customStyle.textShadow = "2.5px 2.5px 0px #000, -1.5px -1.5px 0px #000, 1.5px -1.5px 0px #000, -1.5px 1.5px 0px #000, 0px 4px 20px rgba(0,0,0,0.9)";
+                      customClass = "bg-transparent font-extrabold pb-1 sm:tracking-tight text-white";
+                      animationClass = "animate-subtitle-pop";
+                    } else if (selectedTemplateId === "reels_creator") {
+                      customClass = "bg-black/75 backdrop-blur-[2px] border border-white/5 rounded-2xl px-5 py-2.5 shadow-2xl text-white";
+                      animationClass = "animate-subtitle-slide-up";
+                    } else if (selectedTemplateId === "documentary") {
+                      customClass = "bg-transparent font-medium text-slate-100";
+                      animationClass = ""; // standard overlay fade
+                    } else if (selectedTemplateId === "gaming") {
+                      customStyle.textShadow = "0 0 8px #bd00ff, 0 0 16px rgba(189,0,255,0.6)";
+                      customClass = "bg-slate-950/85 border border-purple-500/30 rounded-xl px-4 py-2 text-white font-bold tracking-wider";
+                      animationClass = "";
+                    } else if (selectedTemplateId === "ai_story") {
+                      customClass = "bg-black/30 border border-white/5 backdrop-blur-[2px] rounded-xl px-4 py-2 text-slate-200 font-bold";
+                      animationClass = "animate-pulse";
+                    } else if (selectedTemplateId === "cinematic") {
+                      customStyle.textShadow = "3px 3px 12px rgba(0,0,0,0.95), 0 0 10px rgba(251,191,36,0.25)";
+                      customClass = "bg-transparent text-slate-100 font-bold tracking-widest uppercase";
+                      animationClass = "animate-subtitle-zoom-in";
+                    } else if (selectedTemplateId === "karaoke") {
+                      customClass = "bg-black/60 border border-white/5 rounded-2xl px-5 py-2.5 shadow-lg text-white";
+                    } else {
+                      // Classic or manual default settings
+                      const colorClass = 
+                        style.fontColor === "white" ? "text-white" :
+                        style.fontColor === "yellow" ? "text-[#fefe00] cyber-glow-yellow" :
+                        style.fontColor === "green" ? "text-green-400" : "text-cyan-400 cyber-glow-cyan";
+
+                      const outlineStyle = style.outline 
+                        ? "bg-black/85 border border-white/10 shadow-[0_0_15px_rgba(0,0,0,0.8)] rounded-xl" 
+                        : "bg-transparent text-shadow-md";
+
+                      customClass = `${colorClass} ${outlineStyle}`;
+                      animationClass = "";
+                    }
+
+                    // Word highlight execution
+                    const words = activeSub.text.split(/\s+/);
+                    const duration = activeSub.end - activeSub.start;
+                    const elapsed = currentTime - activeSub.start;
+                    const progress = Math.min(1, Math.max(0, elapsed / (duration || 1)));
+                    const activeWordIndex = Math.floor(progress * words.length);
+
+                    // If wordHighlight is template active, render span elements
+                    const isWordHighlightActive = ["tiktok_viral", "reels_creator", "karaoke", "gaming", "ai_story", "cinematic"].includes(selectedTemplateId);
 
                     return (
                       <span 
-                        style={calculatedFontSizeObj}
-                        className={`${fontClass} ${sizeClass} ${colorClass} ${outlineStyle} inline-block select-none leading-snug max-w-[90%] transform transition-transform scale-102`}
+                        style={customStyle}
+                        className={`${sizeClass} ${customClass} ${animationClass} inline-block select-none leading-snug max-w-[90%] transform transition-transform`}
                       >
-                        {activeSub.text}
+                        {isWordHighlightActive ? (
+                          <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                            {words.map((word, wIdx) => {
+                              const isWordActive = wIdx === activeWordIndex;
+                              const isWordCompleted = wIdx < activeWordIndex;
+
+                              let wordClass = "transition-all duration-150 inline-block";
+                              let wordStyle: React.CSSProperties = {};
+
+                              if (selectedTemplateId === "tiktok_viral") {
+                                if (isWordActive) {
+                                  wordClass += " text-[#fefe00] scale-110 font-black";
+                                  wordStyle.textShadow = "0 0 15px rgba(254,254,0,0.8), 2px 2px 0px #000";
+                                  wordStyle.transform = "scale(1.15)";
+                                } else {
+                                  wordClass += " text-white";
+                                }
+                              } else if (selectedTemplateId === "reels_creator") {
+                                if (isWordActive) {
+                                  wordClass += " text-[#00f0ff] font-bold";
+                                  wordStyle.textShadow = "0 0 10px rgba(0,240,255,0.7)";
+                                } else {
+                                  wordClass += " text-white";
+                                }
+                              } else if (selectedTemplateId === "karaoke") {
+                                if (isWordActive) {
+                                  wordClass += " text-[#fefe00] font-black scale-102";
+                                  wordStyle.textShadow = "0 0 12px rgba(254,254,0,0.8)";
+                                } else if (isWordCompleted) {
+                                  wordClass += " text-[#fefe00]/60 font-medium";
+                                } else {
+                                  wordClass += " text-white/90 opacity-80";
+                                }
+                              } else if (selectedTemplateId === "gaming") {
+                                if (isWordActive) {
+                                  wordClass += " text-green-400 font-extrabold animate-word-bounce";
+                                  wordStyle.textShadow = "0 0 12px rgba(74,222,128,0.9)";
+                                } else {
+                                  wordClass += " text-slate-300";
+                                }
+                              } else if (selectedTemplateId === "ai_story") {
+                                if (isWordActive) {
+                                  wordClass += " text-cyan-400 font-extrabold animate-pulse";
+                                  wordStyle.textShadow = "0 0 14px rgba(6,182,212,0.9)";
+                                } else {
+                                  wordClass += " text-slate-400 opacity-60";
+                                }
+                              } else if (selectedTemplateId === "cinematic") {
+                                if (isWordActive) {
+                                  wordClass += " text-amber-400 font-extrabold uppercase";
+                                  wordStyle.textShadow = "0 0 15px rgba(251,191,36,0.8)";
+                                } else {
+                                  wordClass += " text-white opacity-55 uppercase";
+                                }
+                              }
+
+                              return (
+                                <span key={wIdx} className={wordClass} style={wordStyle}>
+                                  {word}
+                                </span>
+                              );
+                            })}
+                          </span>
+                        ) : (
+                          activeSub.text
+                        )}
                       </span>
                     );
                   })()}
@@ -1013,6 +1152,111 @@ export default function App() {
               >
                 Gunakan Video Sample Demo
               </button>
+            </div>
+          </div>
+
+          {/* SUBTITLE TEMPLATES SELECTOR SECTION */}
+          <div className="cyber-panel p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col gap-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-widest text-[#00f0ff] font-mono flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-400" />
+                  Pilihan Templet Subtitle (Templates)
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Pilih salah satu templet viral di bawah untuk mengubah tampilan subtitle video secara instan & real-time.
+                </p>
+              </div>
+              <span className="self-start sm:self-center text-[9px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded font-mono uppercase border border-purple-400/30">
+                8 Presets Ready
+              </span>
+            </div>
+
+            {/* Bento Grid layout for 8 Templates */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {SUBTITLE_TEMPLATES.map((tpl) => {
+                const isSelected = selectedTemplateId === tpl.id;
+                const isLocked = tpl.isPremium && !userBilling.isPremium;
+                
+                return (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleSelectTemplate(tpl)}
+                    className={`text-left p-3.5 rounded-xl border flex flex-col justify-between transition-all duration-300 relative group h-[125px] overflow-hidden ${
+                      isSelected
+                        ? "bg-gradient-to-br from-cyan-950/40 to-purple-950/40 border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.25)] scale-[1.01]"
+                        : "bg-black/40 border-white/5 hover:border-cyan-500/30 hover:bg-black/60"
+                    }`}
+                  >
+                    {/* Background faint logo or glow decorative lines */}
+                    <div className="absolute -right-6 -bottom-6 text-slate-700/10 pointer-events-none group-hover:text-[#00f0ff]/5 transition-colors">
+                      <Tv className="w-16 h-16" />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
+                        <span className={`text-[11px] font-bold uppercase tracking-wider font-mono ${isSelected ? 'text-[#00f0ff]' : 'text-slate-200'}`}>
+                          {tpl.name}
+                        </span>
+                        {tpl.isPremium ? (
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase ${
+                            isLocked 
+                              ? 'bg-purple-900/40 text-purple-300 border border-purple-500/30' 
+                              : 'bg-amber-500/15 text-amber-400 border border-amber-500/35'
+                          }`}>
+                            <Crown className="w-2.5 h-2.5" />
+                            PRO
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 text-[8px] font-mono leading-none rounded">
+                            FREE
+                          </span>
+                        )}
+                      </div>
+                      
+                      <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed mt-1">
+                        {tpl.description}
+                      </p>
+                    </div>
+
+                    {/* Footer tags and meta inside template card */}
+                    <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-1 relative z-10 w-full">
+                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-tight">
+                        Font: {tpl.fontFamily}
+                      </span>
+                      {isLocked && (
+                        <div className="flex items-center gap-1 text-purple-300 text-[8px] font-mono">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>Unlock</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Selection glow border */}
+                    {isSelected && (
+                      <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-[#00f0ff] rounded-bl-md"></div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Template Marketplace Roadmap - FUTURE UPDATE (Versi Mendatang) */}
+            <div className="bg-gradient-to-r from-purple-950/20 via-black/40 to-cyan-950/20 border border-white/5 rounded-xl p-3.5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#bd00ff]/5 blur-2xl rounded-full"></div>
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-purple-500/10 rounded-lg text-purple-300 border border-purple-500/20">
+                  <Layers className="w-4 h-4 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-[10px] sm:text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#bd00ff] to-[#00f0ff] uppercase tracking-wider font-mono">
+                    Template Marketplace (Roadmap Versi Mendatang)
+                  </h4>
+                  <p className="text-[9px] sm:text-[10px] text-slate-400 leading-relaxed mt-1">
+                    Pada versi berikutnya, Anda bisa <strong className="text-purple-300">membuat templet kustom sendiri</strong>, menyimpan preset ke cloud, membagikan hasil karya desain Anda secara gratis, atau <strong className="text-cyan-400">menjual templet subtitle premium</strong> hasil karya Anda di Marketplace resmi Subzy!
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1335,13 +1579,19 @@ export default function App() {
                 </label>
                 <select 
                   value={style.fontFamily}
-                  onChange={(e) => setStyle({...style, fontFamily: e.target.value as any})}
+                  onChange={(e) => {
+                    setStyle({...style, fontFamily: e.target.value as any});
+                    setSelectedTemplateId("manual");
+                  }}
                   className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-400"
                 >
                   <option value="Poppins">Poppins (Modern Slate)</option>
                   <option value="Arial">Arial (Standard Sans)</option>
                   <option value="Roboto">Roboto (Minimal Mono)</option>
                   <option value="Montserrat">Montserrat (Cyber Bold)</option>
+                  <option value="Orbitron">Orbitron (Gaming Tech)</option>
+                  <option value="Cinzel">Cinzel (Story Editorial)</option>
+                  <option value="Bebas Neue">Bebas Neue (Cinematic Display)</option>
                 </select>
               </div>
 
@@ -1356,7 +1606,10 @@ export default function App() {
                   {(["small", "medium", "large", "auto"] as const).map((sz) => (
                     <button
                       key={sz}
-                      onClick={() => setStyle({...style, fontSize: sz})}
+                      onClick={() => {
+                        setStyle({...style, fontSize: sz});
+                        setSelectedTemplateId("manual");
+                      }}
                       className={`flex-1 text-[8px] sm:text-[10px] py-1 font-bold uppercase rounded ${
                         style.fontSize === sz 
                           ? "bg-cyan-500/20 text-cyan-400 border border-cyan-400/30" 
@@ -1377,7 +1630,10 @@ export default function App() {
                 </label>
                 <select 
                   value={style.fontColor}
-                  onChange={(e) => setStyle({...style, fontColor: e.target.value as any})}
+                  onChange={(e) => {
+                    setStyle({...style, fontColor: e.target.value as any});
+                    setSelectedTemplateId("manual");
+                  }}
                   className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-400"
                 >
                   <option value="white">Putih Bersih</option>
@@ -1395,7 +1651,10 @@ export default function App() {
                   {(["top", "center", "bottom"] as const).map((pos) => (
                     <button
                       key={pos}
-                      onClick={() => setStyle({...style, position: pos})}
+                      onClick={() => {
+                        setStyle({...style, position: pos});
+                        setSelectedTemplateId("manual");
+                      }}
                       className={`flex-1 text-[10px] py-1 font-bold uppercase rounded ${
                         style.position === pos 
                           ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" 
@@ -1416,7 +1675,10 @@ export default function App() {
                 <p className="text-[10px] text-slate-500">Menyediakan latar belakang transparan hitam untuk membantu keterbacaan subtitle</p>
               </div>
               <button
-                onClick={() => setStyle({...style, outline: !style.outline})}
+                onClick={() => {
+                  setStyle({...style, outline: !style.outline});
+                  setSelectedTemplateId("manual");
+                }}
                 className={`w-12 h-6 rounded-full p-1 transition-colors ${style.outline ? "bg-cyan-400" : "bg-white/10"}`}
               >
                 <div className={`w-4 h-4 rounded-full bg-slate-900 transition-transform ${style.outline ? "translate-x-6" : "translate-x-0"}`}></div>

@@ -5,7 +5,7 @@ export interface SubtitleSegment {
   text: string;
 }
 
-export type FontFamilyType = 'Arial' | 'Roboto' | 'Montserrat' | 'Poppins';
+export type FontFamilyType = 'Arial' | 'Roboto' | 'Montserrat' | 'Poppins' | 'Orbitron' | 'Cinzel' | 'Bebas Neue';
 export type FontSizeType = 'small' | 'medium' | 'large' | 'auto';
 export type FontColorType = 'white' | 'yellow' | 'green' | 'blue';
 export type PositionType = 'top' | 'center' | 'bottom';
