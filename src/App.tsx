@@ -324,7 +324,7 @@ export default function App() {
       setGenerationStep(1);
       if (videoFile) {
         try {
-          audioBase64 = await extractAudioAsWavBase64(videoFile, 90);
+          audioBase64 = await extractAudioAsWavBase64(videoFile, 180);
           console.log("Audio extracted successfully, base64 length:", audioBase64?.length);
         } catch (audioErr) {
           console.warn("Failed browser offline decoding (maybe video has no sound or codec issues):", audioErr);

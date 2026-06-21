@@ -144,12 +144,13 @@ No other text, markdown wrapper, or explanation. Only valid JSON.`;
           });
           
           promptContent.push(
-            `Carefully listen to the attached real audio stream from the uploaded video. 
-Conduct high-fidelity Speech-to-Text transcription. 
-Transcribe the EXACT spoken voice in the audio verbatim into subtitles synchronized with timing (in seconds).
-Output the translation or original transcription as requested in: "${videoLang}" language.
-Separate the transcript into natural, readable subtitle segments of 2 to 4 seconds each.
-Ensure timestamps do not overlap and the format is strictly a JSON array of objects: [{"id": "s1", "start": 0.5, "end": 3.2, "text": "transcribed speech text"}]`
+            `Instruction for ultra high-precision Speech-to-Text alignment:
+1. Listen carefully to the audio and transcribe the spoken voice verbatim. Output everything translated/transcribed in: "${videoLang}" language.
+2. Maintain absolute timing synchronization. Specify "start" and "end" timestamps as precise flow-based decimal numbers in seconds, matching EXACTLY when the words are spoken in the actual sound track.
+3. If there is silence, music, or non-verbal noise, DO NOT assign subtitles. There should be silent gaps without subtitles. "start" must pinpoint the exact millisecond speech begins, and "end" must pinpoint when it finishes.
+4. Segment the sentences so each subtitle contains only 1.5 to 3.5 seconds of speaking to ensure it is perfectly comfortable to read in real-time.
+5. Absolute accuracy is paramount: do not hallucinate words that aren't there, and don't lag behind or run ahead of the speaker.
+6. The output must strictly be a JSON array: [{"id": "s1", "start": 1.25, "end": 3.8, "text": "transcribed speech segment"}]`
           );
         } else {
           promptContent.push(
