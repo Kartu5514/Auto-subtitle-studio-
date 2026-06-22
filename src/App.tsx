@@ -220,22 +220,97 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoWrapperRef = useRef<HTMLDivElement>(null);
-  const [playerWidth, setPlayerWidth] = useState<number>(645);
 
-  // Track the actual player rendering width for dynamic layout optimization and unobtrusive subtitles
-  useEffect(() => {
-    if (!videoWrapperRef.current) return;
-    setPlayerWidth(videoWrapperRef.current.offsetWidth || 645);
-
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0].contentRect;
-      if (rect.width > 0) {
-        setPlayerWidth(rect.width);
+  // Dynamic player styling to fit portrait (9:16) and landscape (16:9) ratios cleanly without ugly large black side pillars
+  const playerAspectStyle = (() => {
+    if (!metadata.resolution) return { aspectRatio: "16/9" };
+    const parts = metadata.resolution.toLowerCase().split(/[x_]/);
+    if (parts.length >= 2) {
+      const w = parseInt(parts[0], 10);
+      const h = parseInt(parts[1], 10);
+      if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+        if (h > w) {
+          // Vertical portrait video (e.g. 1080x1920) style
+          return {
+            aspectRatio: "9/16",
+            maxHeight: "460px",
+            width: "100%",
+            maxWidth: "280px", // centers and scales perfectly with beautiful boundaries
+            margin: "0 auto",
+            backgroundColor: "#050508"
+          };
+        } else if (w === h) {
+          // Square video configuration
+          return {
+            aspectRatio: "1/1",
+            maxHeight: "400px",
+            width: "100%",
+            maxWidth: "400px",
+            margin: "0 auto",
+            backgroundColor: "#050508"
+          };
+        }
       }
-    });
+    }
+    return { aspectRatio: "16/9" };
+  })();
 
-    observer.observe(videoWrapperRef.current);
-    return () => observer.disconnect();
+  // Real-time sub-millisecond playback tracker utilizing requestAnimationFrame
+  // This delivers fluid 60fps word highlight transitions, eliminating any latency or lag.
+  // It only runs when the video is playing to halt extraneous background processing.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let rafId: number | null = null;
+
+    const tick = () => {
+      if (!video) return;
+      setCurrentTime(video.currentTime);
+      if (!video.paused) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = null;
+      }
+    };
+
+    const handlePlay = () => {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    const handlePause = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      setCurrentTime(video.currentTime);
+    };
+
+    const handleSeeking = () => {
+      setCurrentTime(video.currentTime);
+    };
+
+    video.addEventListener("play", handlePlay);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("seeking", handleSeeking);
+    video.addEventListener("seeked", handleSeeking);
+
+    // If already playing when effect triggers, hook into animation frame
+    if (!video.paused) {
+      handlePlay();
+    }
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      video.removeEventListener("play", handlePlay);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("seeking", handleSeeking);
+      video.removeEventListener("seeked", handleSeeking);
+    };
   }, [metadata.url]);
 
   // Load persistence stats and billing on init
@@ -905,7 +980,11 @@ export default function App() {
             </div>
 
             {/* Main Video Element Wrapper */}
-            <div ref={videoWrapperRef} className="relative aspect-video bg-[#050508] flex items-center justify-center overflow-hidden">
+            <div 
+              ref={videoWrapperRef} 
+              style={{ ...playerAspectStyle, containerType: "inline-size" }}
+              className="relative bg-[#050508] flex items-center justify-center overflow-hidden mx-auto rounded-xl shadow-inner border border-white/5"
+            >
               <video 
                 ref={videoRef}
                 src={metadata.url || undefined}
@@ -923,13 +1002,31 @@ export default function App() {
               {subtitles.length > 0 && (
                 <div 
                   className={`absolute left-4 right-4 z-20 pointer-events-none transition-all duration-200 flex justify-center text-center ${
-                    style.position === "top" ? "top-14" : style.position === "center" ? "top-1/2 -translate-y-1/2" : "bottom-6"
+                    style.position === "top"
+                      ? "top-14" 
+                      : style.position === "center" 
+                        ? (metadata.resolution && (() => {
+                            const parts = metadata.resolution.toLowerCase().split(/[x_]/);
+                            return parts.length >= 2 && parseInt(parts[1], 10) > parseInt(parts[0], 10);
+                          })() ? "bottom-24" : "top-1/2 -translate-y-1/2")
+                        : "bottom-6"
                   }`}
                   id="rendered-subtitle-container"
                 >
                   {(() => {
                     const activeSub = subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
                     if (!activeSub) return null;
+
+                    const isVerticalVideo = (() => {
+                      if (!metadata.resolution) return false;
+                      const parts = metadata.resolution.toLowerCase().split(/[x_]/);
+                      if (parts.length >= 2) {
+                        const w = parseInt(parts[0], 10);
+                        const h = parseInt(parts[1], 10);
+                        return h > w;
+                      }
+                      return false;
+                    })();
 
                     // Compute dynamic font family inline styles to support Orbitron, Cinzel, Bebas Neue
                     const getFontFamilyStyle = () => {
@@ -946,20 +1043,34 @@ export default function App() {
 
                     let calculatedFontSizeObj = {};
                     let sizeClass = "";
-                    if (style.fontSize === "auto") {
-                      const textLen = activeSub.text.length;
-                      let scaleFactor = 0.034;
-                      if (textLen > 65) scaleFactor = 0.024;
-                      else if (textLen > 35) scaleFactor = 0.028;
-                      
-                      const calculatedPx = Math.max(12, Math.min(22, Math.round(playerWidth * scaleFactor)));
-                      calculatedFontSizeObj = { fontSize: `${calculatedPx}px` };
+                    
+                    // High-accuracy fluid font sizing relative to the player rendering boundary via CSS container query units (cqw)
+                    const getFontSizeClamp = (): string => {
+                      if (style.fontSize === "auto") {
+                        const textLen = activeSub.text.length;
+                        let val = "3.4cqw";
+                        if (textLen > 65) val = "2.4cqw";
+                        else if (textLen > 35) val = "2.8cqw";
+                        return `clamp(12px, ${val}, 22px)`;
+                      } else if (style.fontSize === "small") {
+                        return "clamp(10px, 2.5cqw, 14px)";
+                      } else if (style.fontSize === "medium") {
+                        return "clamp(12px, 3.2cqw, 18px)";
+                      } else { // large
+                        return "clamp(13px, 4.5cqw, 22px)";
+                      }
+                    };
+
+                    calculatedFontSizeObj = { fontSize: getFontSizeClamp() };
+                    
+                    if (style.fontSize === "small") {
+                      sizeClass = "px-3 py-1 font-medium";
+                    } else if (style.fontSize === "medium") {
+                      sizeClass = "px-4 py-1.5 font-bold p-1.5";
+                    } else if (style.fontSize === "large") {
+                      sizeClass = "px-5 py-2 font-black tracking-tight";
+                    } else { // auto
                       sizeClass = "px-3.5 py-1.5 font-medium leading-normal";
-                    } else {
-                      sizeClass = 
-                        style.fontSize === "small" ? "text-xs sm:text-sm px-3 py-1" :
-                        style.fontSize === "medium" ? "text-sm sm:text-lg px-4 py-1.5" : 
-                        "text-base sm:text-2xl px-6 py-2 pb-2.5 font-bold tracking-tight";
                     }
 
                     // Combined custom styles
@@ -1011,11 +1122,11 @@ export default function App() {
                     }
 
                     // Word highlight execution
-                    const words = activeSub.text.split(/\s+/);
+                    const words = activeSub.text.split(/\s+/).filter(w => w.trim().length > 0);
                     const duration = activeSub.end - activeSub.start;
                     const elapsed = currentTime - activeSub.start;
                     const progress = Math.min(1, Math.max(0, elapsed / (duration || 1)));
-                    const activeWordIndex = Math.floor(progress * words.length);
+                    const activeWordIndex = Math.min(words.length - 1, Math.floor(progress * words.length));
 
                     // If wordHighlight is template active, render span elements
                     const isWordHighlightActive = ["tiktok_viral", "reels_creator", "karaoke", "gaming", "ai_story", "cinematic"].includes(selectedTemplateId);
